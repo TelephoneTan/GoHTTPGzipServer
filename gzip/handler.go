@@ -1,9 +1,11 @@
 package gzip
 
 import (
+	"bufio"
 	"compress/gzip"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -120,4 +122,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//
 	h.gzipWriter.Reset(io.Discard)
 	gzipWriterPool.Put(h.gzipWriter)
+}
+
+func (h *Handler) Hijack() (conn net.Conn, readWriter *bufio.ReadWriter, err error) {
+	switch w := h.responseWriter.(type) {
+	case http.Hijacker:
+		return w.Hijack()
+	default:
+		return conn, readWriter, errors.New("http.ResponseWriter does not implement http.Hijacker")
+	}
 }
