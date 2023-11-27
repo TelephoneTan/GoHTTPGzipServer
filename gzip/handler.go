@@ -7,17 +7,18 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 )
 
 type Handler struct {
-	headerForbidden     bool
-	contentForbidden    bool
-	contentEncodingSent bool
-	responseWriter      http.ResponseWriter
-	gzipWriter          *gzip.Writer
-	Handler             http.Handler
+	headerForbidden  bool
+	contentForbidden bool
+	gzipOn           bool
+	responseWriter   http.ResponseWriter
+	gzipWriter       *gzip.Writer
+	Handler          http.Handler
 }
 
 func (h *Handler) Init() *Handler {
@@ -32,15 +33,24 @@ func (h *Handler) Header() http.Header {
 	return h.responseWriter.Header()
 }
 
+func (h *Handler) turnOnGzip() {
+	h.gzipOn = true
+	values := h.Header().Values("Content-Range")
+	reg := regexp.MustCompile(`/\d+`)
+	for i := 0; i < len(values); i++ {
+		values[i] = reg.ReplaceAllString(values[i], "/*")
+	}
+}
+
 func (h *Handler) Write(bs []byte) (num int, err error) {
 	if h.contentForbidden {
 		return 0, errors.New("content forbidden")
 	}
 	if len(bs) > 0 {
 		h.removeContentLength()
-		num, err = h.gzipWriter.Write(bs)
 		h.headerForbidden = true
-		h.contentEncodingSent = true
+		h.turnOnGzip()
+		num, err = h.gzipWriter.Write(bs)
 	}
 	return num, err
 }
@@ -62,7 +72,7 @@ func (h *Handler) WriteHeader(statusCode int) {
 		h.contentForbidden = true
 		h.Header().Del("Content-Encoding")
 	} else {
-		h.contentEncodingSent = true
+		h.turnOnGzip()
 	}
 	h.removeContentLength()
 	h.responseWriter.WriteHeader(statusCode)
@@ -114,7 +124,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//
 	h.removeContentLength()
 	//
-	if !h.contentEncodingSent {
+	if !h.gzipOn {
 		w.Header().Del("Content-Encoding")
 	} else {
 		_ = h.gzipWriter.Close()
