@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 )
@@ -35,11 +34,6 @@ func (h *Handler) Header() http.Header {
 
 func (h *Handler) turnOnGzip() {
 	h.gzipOn = true
-	values := h.Header().Values("Content-Range")
-	reg := regexp.MustCompile(`/\d+`)
-	for i := 0; i < len(values); i++ {
-		values[i] = reg.ReplaceAllString(values[i], "/*")
-	}
 }
 
 func (h *Handler) Write(bs []byte) (num int, err error) {
@@ -97,7 +91,7 @@ func containsOrSubStringIgnoreCase(list []string, s string) bool {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	aes := r.Header.Values("Accept-Encoding")
-	if !containsOrSubStringIgnoreCase(aes, "gzip") {
+	if !containsOrSubStringIgnoreCase(aes, "gzip") || r.Header.Get("Range") != "" {
 		h.Handler.ServeHTTP(w, r)
 		return
 	}
